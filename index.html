@@ -2,17 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>QuickScan Fill | Point. Scan. Done.</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Hide the library's default UI bits we don't want */
+        :root {
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        
+        /* Desktop Block Overlay */
+        @media (min-width: 1024px) {
+            #desktop-warning {
+                display: flex !important;
+            }
+        }
+
         #reader__dashboard_section_csr button {
             display: none;
         }
         #reader video {
-            border-radius: 1rem;
+            border-radius: 1.5rem;
             object-fit: cover !important;
         }
         .scan-flash {
@@ -22,75 +32,153 @@
             0% { background-color: rgba(34, 197, 94, 0.5); }
             100% { background-color: transparent; }
         }
-        .active-glow {
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        
+        .nav-active {
+            color: #2563eb;
+        }
+        .nav-active svg {
+            fill: rgba(37, 99, 235, 0.1);
+        }
+
+        /* Smooth page transitions */
+        .page {
+            display: none;
+            animation: fadeIn 0.3s ease-out;
+        }
+        .page.active {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans text-slate-900">
+<body class="bg-slate-50 font-sans text-slate-900 overflow-hidden">
 
-    <div class="max-w-md mx-auto p-6 flex flex-col min-h-screen">
+    <!-- Desktop Warning Block -->
+    <div id="desktop-warning" class="fixed inset-0 z-[100] bg-slate-900 text-white hidden flex-col items-center justify-center p-10 text-center">
+        <div class="bg-white/10 p-6 rounded-3xl mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold mb-2">Mobile Optimized</h2>
+        <p class="text-slate-400 max-w-xs">QuickScan Fill is designed for mobile workflows. Please open this link on your smartphone to use the scanner and haptic features.</p>
+    </div>
+
+    <!-- Main Mobile Container -->
+    <div class="flex flex-col h-screen max-w-md mx-auto bg-white shadow-2xl relative">
+        
         <!-- Header -->
-        <header class="mb-8 text-center">
-            <h1 class="text-2xl font-bold tracking-tight text-slate-800">QuickScan Fill</h1>
-            <p class="text-slate-500 text-sm">Point. Scan. Done.</p>
+        <header class="pt-12 pb-4 px-6 flex justify-between items-center border-b border-slate-50 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-slate-800" id="page-title">Scanner</h1>
+                <p class="text-[10px] uppercase tracking-widest text-blue-500 font-bold">QuickScan v1.0</p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
         </header>
 
-        <!-- Main Input Section -->
-        <div id="main-container" class="space-y-6 transition-all duration-300">
-            <div class="space-y-2">
-                <label for="scanned-data" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Scan Result / Input</label>
-                <div class="relative">
-                    <input 
-                        type="text" 
-                        id="scanned-data" 
-                        placeholder="Scan a code or type manually..." 
-                        class="w-full p-4 pr-12 rounded-2xl border border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-lg"
-                    >
-                    <button id="clear-btn" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 6-12 12"/><path d="m6 6 12 12"/></svg>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Scanner Viewport -->
-            <div id="scanner-wrapper" class="relative overflow-hidden rounded-3xl bg-slate-900 aspect-square shadow-xl hidden border-4 border-transparent transition-colors">
-                <div id="reader" class="w-full h-full"></div>
-                <!-- Scanner Overlay -->
-                <div class="absolute inset-0 pointer-events-none border-[40px] border-black/40 flex items-center justify-center">
-                    <div class="w-full h-full border-2 border-blue-400/50 rounded-lg relative">
-                        <div class="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500"></div>
-                        <div class="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-500"></div>
-                        <div class="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-500"></div>
-                        <div class="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-500"></div>
+        <!-- Page Content Area -->
+        <main class="flex-1 overflow-y-auto px-6 py-6 pb-32">
+            
+            <!-- PAGE: SCANNER -->
+            <section id="page-scan" class="page active flex-col space-y-6">
+                <div class="space-y-2">
+                    <div class="relative">
+                        <input 
+                            type="text" 
+                            id="scanned-data" 
+                            placeholder="Data will appear here..." 
+                            class="w-full p-4 pr-12 rounded-2xl border-none bg-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-lg font-medium"
+                        >
+                        <button id="clear-btn" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hidden">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 6-12 12"/><path d="m6 6 12 12"/></svg>
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Action Buttons -->
-            <div class="space-y-3">
-                <button 
-                    id="scan-toggle-btn"
-                    class="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center gap-3 transition-all"
-                >
-                    <svg id="cam-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                    <span id="btn-text">Open Scanner</span>
-                </button>
-                
-                <p id="status-msg" class="text-center text-sm font-medium text-slate-400 italic">Ready to scan</p>
-            </div>
-        </div>
+                <div id="scanner-wrapper" class="relative overflow-hidden rounded-[2.5rem] bg-slate-900 aspect-square shadow-2xl hidden transition-all">
+                    <div id="reader" class="w-full h-full"></div>
+                    <div class="absolute inset-0 pointer-events-none border-[30px] border-black/20 flex items-center justify-center">
+                        <div class="w-full h-full border-2 border-white/30 rounded-3xl relative">
+                            <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                            <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                            <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                            <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- History / Logs (Optional MVP extension) -->
-        <div class="mt-auto pt-8">
-            <div class="flex items-center justify-between mb-2">
-                <h3 class="text-xs font-bold uppercase text-slate-400">Recent Scans</h3>
-                <button id="clear-history" class="text-[10px] text-blue-500 font-bold uppercase">Clear</button>
-            </div>
-            <div id="history-list" class="space-y-2 max-h-32 overflow-y-auto pr-1">
-                <p class="text-xs text-slate-300 italic text-center py-2">No scans yet</p>
-            </div>
-        </div>
+                <div class="space-y-4">
+                    <button 
+                        id="scan-toggle-btn"
+                        class="w-full py-5 bg-blue-600 active:bg-blue-800 active:scale-[0.98] text-white font-bold rounded-[1.5rem] shadow-xl shadow-blue-100 flex items-center justify-center gap-3 transition-all"
+                    >
+                        <svg id="cam-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                        <span id="btn-text">Start Scanning</span>
+                    </button>
+                    <p id="status-msg" class="text-center text-xs font-bold text-slate-300 uppercase tracking-tighter">Ready to capture</p>
+                </div>
+            </section>
+
+            <!-- PAGE: HISTORY -->
+            <section id="page-history" class="page flex-col">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-sm font-bold text-slate-400">LOG HISTORY</h3>
+                    <button id="clear-history" class="text-xs text-red-500 font-bold px-3 py-1 bg-red-50 rounded-full">Clear All</button>
+                </div>
+                <div id="history-list" class="space-y-3">
+                    <div class="py-10 text-center space-y-3">
+                        <div class="w-12 h-12 bg-slate-50 rounded-full mx-auto flex items-center justify-center text-slate-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/></svg>
+                        </div>
+                        <p class="text-slate-300 text-sm italic">No recent scans found</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: SETTINGS -->
+            <section id="page-settings" class="page flex-col space-y-6">
+                <div class="bg-slate-50 p-5 rounded-3xl space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-bold text-slate-800">Sound Feedback</p>
+                            <p class="text-xs text-slate-500">Play beep on success</p>
+                        </div>
+                        <div class="w-12 h-6 bg-blue-600 rounded-full relative"><div class="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div></div>
+                    </div>
+                    <div class="border-t border-slate-200 pt-4 flex items-center justify-between">
+                        <div>
+                            <p class="font-bold text-slate-800">Vibration</p>
+                            <p class="text-xs text-slate-500">Haptic feedback</p>
+                        </div>
+                        <div class="w-12 h-6 bg-blue-600 rounded-full relative"><div class="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div></div>
+                    </div>
+                </div>
+                <div class="p-5 border border-slate-100 rounded-3xl">
+                    <p class="text-xs font-bold text-slate-400 mb-2 uppercase">About</p>
+                    <p class="text-sm text-slate-600 leading-relaxed">QuickScan Fill is a specialized tool for industrial data entry. All processing is done locally on your device for maximum privacy.</p>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Bottom Navigation Bar -->
+        <nav class="bg-white border-t border-slate-100 flex justify-around items-center px-4 py-3 pb-[calc(1rem+var(--safe-area-inset-bottom))] sticky bottom-0 z-20">
+            <button data-page="scan" class="nav-btn nav-active flex flex-col items-center gap-1 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="transition-transform group-active:scale-90"><path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Scan</span>
+            </button>
+            <button data-page="history" class="nav-btn flex flex-col items-center gap-1 group text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="transition-transform group-active:scale-90"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+                <span class="text-[10px] font-bold uppercase tracking-wider">History</span>
+            </button>
+            <button data-page="settings" class="nav-btn flex flex-col items-center gap-1 group text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="transition-transform group-active:scale-90"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Setup</span>
+            </button>
+        </nav>
     </div>
 
     <script>
@@ -102,11 +190,35 @@
         const historyList = document.getElementById('history-list');
         const clearBtn = document.getElementById('clear-btn');
         const clearHistoryBtn = document.getElementById('clear-history');
+        const pageTitle = document.getElementById('page-title');
 
         let html5QrCode;
         let isScanning = false;
 
-        // --- Audio Context for Beep ---
+        // --- Navigation Logic ---
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetPage = btn.getAttribute('data-page');
+                
+                // Stop scanner if leaving scan page
+                if (isScanning && targetPage !== 'scan') stopScanner();
+
+                // Update UI Navigation
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('nav-active', 'text-blue-600'));
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.add('text-slate-400'));
+                btn.classList.add('nav-active', 'text-blue-600');
+                btn.classList.remove('text-slate-400');
+
+                // Switch Pages
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(`page-${targetPage}`).classList.add('active');
+                
+                // Update Title
+                pageTitle.innerText = targetPage.charAt(0).toUpperCase() + targetPage.slice(1);
+            });
+        });
+
+        // --- Audio Context ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playBeep() {
             const oscillator = audioCtx.createOscillator();
@@ -114,7 +226,7 @@
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+            oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
             gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
             gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
             oscillator.start();
@@ -124,51 +236,46 @@
         // --- UI Interactions ---
         function updateStatus(msg, type = 'default') {
             statusMsg.innerText = msg;
-            statusMsg.className = 'text-center text-sm font-medium italic transition-colors ';
+            statusMsg.className = 'text-center text-xs font-bold uppercase tracking-tighter transition-colors ';
             if (type === 'success') statusMsg.classList.add('text-green-500');
             else if (type === 'error') statusMsg.classList.add('text-red-500');
-            else statusMsg.classList.add('text-slate-400');
+            else statusMsg.classList.add('text-slate-300');
         }
 
         function addToHistory(val) {
             if (historyList.querySelector('p.italic')) historyList.innerHTML = '';
             const item = document.createElement('div');
-            item.className = 'bg-white p-3 rounded-xl border border-slate-100 text-sm text-slate-600 flex justify-between items-center shadow-sm animate-in slide-in-from-left duration-300';
+            item.className = 'bg-slate-50 p-4 rounded-2xl border-none text-sm text-slate-700 flex justify-between items-center animate-in slide-in-from-bottom-2 duration-300';
             item.innerHTML = `
-                <span class="truncate pr-4">${val}</span>
-                <span class="text-[10px] text-slate-300">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                <div class="flex flex-col">
+                    <span class="font-bold text-slate-800 truncate max-w-[180px]">${val}</span>
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">${new Date().toLocaleTimeString()}</span>
+                </div>
+                <button class="text-blue-500 active:scale-90 transition-transform">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </button>
             `;
             historyList.prepend(item);
         }
 
-        function handleScanSuccess(decodedText, decodedResult) {
-            // Feedback
+        function handleScanSuccess(decodedText) {
             playBeep();
-            if (navigator.vibrate) navigator.vibrate(100);
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             
-            // Logic: Handle JSON or Text
             let finalValue = decodedText;
             try {
                 const parsed = JSON.parse(decodedText);
                 finalValue = parsed.address || parsed.id || parsed.code || decodedText;
-            } catch (e) {
-                // Not JSON, use plain text
-            }
+            } catch (e) {}
 
-            // Populate Input
             inputField.value = finalValue;
             clearBtn.classList.remove('hidden');
             
-            // Visual feedback
             scannerWrapper.classList.add('scan-flash');
-            updateStatus('Scan successful!', 'success');
+            updateStatus('Captured', 'success');
             addToHistory(finalValue);
 
-            setTimeout(() => {
-                scannerWrapper.classList.remove('scan-flash');
-            }, 500);
-
-            // Optional: Auto-stop after successful scan for better mobile UX
+            setTimeout(() => scannerWrapper.classList.remove('scan-flash'), 500);
             stopScanner();
         }
 
@@ -176,36 +283,32 @@
             try {
                 isScanning = true;
                 scannerWrapper.classList.remove('hidden');
-                btnText.innerText = "Stop Scanner";
-                scanBtn.classList.replace('bg-blue-600', 'bg-slate-800');
-                updateStatus('Searching for QR/Barcode...');
+                btnText.innerText = "Close Camera";
+                scanBtn.classList.replace('bg-blue-600', 'bg-slate-900');
+                updateStatus('Active: scanning...');
 
                 html5QrCode = new Html5Qrcode("reader");
-                const config = { fps: 15, qrbox: { width: 250, height: 250 } };
-
-                // Use back camera (environment)
                 await html5QrCode.start(
                     { facingMode: "environment" }, 
-                    config, 
+                    { fps: 20, qrbox: { width: 220, height: 220 } }, 
                     handleScanSuccess
                 );
             } catch (err) {
-                console.error(err);
-                updateStatus('Camera error: ' + err, 'error');
+                updateStatus('Camera failed', 'error');
                 stopScanner();
             }
         }
 
         async function stopScanner() {
             isScanning = false;
-            btnText.innerText = "Open Scanner";
-            scanBtn.classList.replace('bg-slate-800', 'bg-blue-600');
+            btnText.innerText = "Start Scanning";
+            scanBtn.classList.replace('bg-slate-900', 'bg-blue-600');
             scannerWrapper.classList.add('hidden');
             if (html5QrCode) {
-                await html5QrCode.stop();
+                await html5QrCode.stop().catch(() => {});
                 html5QrCode.clear();
             }
-            updateStatus('Scanner stopped');
+            updateStatus('Ready to capture');
         }
 
         scanBtn.addEventListener('click', () => {
@@ -216,7 +319,6 @@
         clearBtn.addEventListener('click', () => {
             inputField.value = '';
             clearBtn.classList.add('hidden');
-            updateStatus('Cleared');
         });
 
         inputField.addEventListener('input', () => {
@@ -225,14 +327,17 @@
         });
 
         clearHistoryBtn.addEventListener('click', () => {
-            historyList.innerHTML = '<p class="text-xs text-slate-300 italic text-center py-2">No scans yet</p>';
+            historyList.innerHTML = `
+                <div class="py-10 text-center space-y-3">
+                    <div class="w-12 h-12 bg-slate-50 rounded-full mx-auto flex items-center justify-center text-slate-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/></svg>
+                    </div>
+                    <p class="text-slate-300 text-sm italic">No recent scans found</p>
+                </div>`;
         });
 
-        // Initialize Audio on first user interaction to bypass browser policies
         document.body.addEventListener('click', () => {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
         }, { once: true });
 
     </script>
