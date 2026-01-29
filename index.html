@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QuickScan Fill | Point. Scan. Done.</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Hide the library's default UI bits we don't want */
+        #reader__dashboard_section_csr button {
+            display: none;
+        }
+        #reader video {
+            border-radius: 1rem;
+            object-fit: cover !important;
+        }
+        .scan-flash {
+            animation: flash 0.5s ease-out;
+        }
+        @keyframes flash {
+            0% { background-color: rgba(34, 197, 94, 0.5); }
+            100% { background-color: transparent; }
+        }
+        .active-glow {
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900">
+
+    <div class="max-w-md mx-auto p-6 flex flex-col min-h-screen">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <h1 class="text-2xl font-bold tracking-tight text-slate-800">QuickScan Fill</h1>
+            <p class="text-slate-500 text-sm">Point. Scan. Done.</p>
+        </header>
+
+        <!-- Main Input Section -->
+        <div id="main-container" class="space-y-6 transition-all duration-300">
+            <div class="space-y-2">
+                <label for="scanned-data" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Scan Result / Input</label>
+                <div class="relative">
+                    <input 
+                        type="text" 
+                        id="scanned-data" 
+                        placeholder="Scan a code or type manually..." 
+                        class="w-full p-4 pr-12 rounded-2xl border border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-lg"
+                    >
+                    <button id="clear-btn" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 6-12 12"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scanner Viewport -->
+            <div id="scanner-wrapper" class="relative overflow-hidden rounded-3xl bg-slate-900 aspect-square shadow-xl hidden border-4 border-transparent transition-colors">
+                <div id="reader" class="w-full h-full"></div>
+                <!-- Scanner Overlay -->
+                <div class="absolute inset-0 pointer-events-none border-[40px] border-black/40 flex items-center justify-center">
+                    <div class="w-full h-full border-2 border-blue-400/50 rounded-lg relative">
+                        <div class="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500"></div>
+                        <div class="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-500"></div>
+                        <div class="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-500"></div>
+                        <div class="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-500"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="space-y-3">
+                <button 
+                    id="scan-toggle-btn"
+                    class="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center gap-3 transition-all"
+                >
+                    <svg id="cam-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                    <span id="btn-text">Open Scanner</span>
+                </button>
+                
+                <p id="status-msg" class="text-center text-sm font-medium text-slate-400 italic">Ready to scan</p>
+            </div>
+        </div>
+
+        <!-- History / Logs (Optional MVP extension) -->
+        <div class="mt-auto pt-8">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xs font-bold uppercase text-slate-400">Recent Scans</h3>
+                <button id="clear-history" class="text-[10px] text-blue-500 font-bold uppercase">Clear</button>
+            </div>
+            <div id="history-list" class="space-y-2 max-h-32 overflow-y-auto pr-1">
+                <p class="text-xs text-slate-300 italic text-center py-2">No scans yet</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const inputField = document.getElementById('scanned-data');
+        const scannerWrapper = document.getElementById('scanner-wrapper');
+        const scanBtn = document.getElementById('scan-toggle-btn');
+        const btnText = document.getElementById('btn-text');
+        const statusMsg = document.getElementById('status-msg');
+        const historyList = document.getElementById('history-list');
+        const clearBtn = document.getElementById('clear-btn');
+        const clearHistoryBtn = document.getElementById('clear-history');
+
+        let html5QrCode;
+        let isScanning = false;
+
+        // --- Audio Context for Beep ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playBeep() {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // --- UI Interactions ---
+        function updateStatus(msg, type = 'default') {
+            statusMsg.innerText = msg;
+            statusMsg.className = 'text-center text-sm font-medium italic transition-colors ';
+            if (type === 'success') statusMsg.classList.add('text-green-500');
+            else if (type === 'error') statusMsg.classList.add('text-red-500');
+            else statusMsg.classList.add('text-slate-400');
+        }
+
+        function addToHistory(val) {
+            if (historyList.querySelector('p.italic')) historyList.innerHTML = '';
+            const item = document.createElement('div');
+            item.className = 'bg-white p-3 rounded-xl border border-slate-100 text-sm text-slate-600 flex justify-between items-center shadow-sm animate-in slide-in-from-left duration-300';
+            item.innerHTML = `
+                <span class="truncate pr-4">${val}</span>
+                <span class="text-[10px] text-slate-300">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            `;
+            historyList.prepend(item);
+        }
+
+        function handleScanSuccess(decodedText, decodedResult) {
+            // Feedback
+            playBeep();
+            if (navigator.vibrate) navigator.vibrate(100);
+            
+            // Logic: Handle JSON or Text
+            let finalValue = decodedText;
+            try {
+                const parsed = JSON.parse(decodedText);
+                finalValue = parsed.address || parsed.id || parsed.code || decodedText;
+            } catch (e) {
+                // Not JSON, use plain text
+            }
+
+            // Populate Input
+            inputField.value = finalValue;
+            clearBtn.classList.remove('hidden');
+            
+            // Visual feedback
+            scannerWrapper.classList.add('scan-flash');
+            updateStatus('Scan successful!', 'success');
+            addToHistory(finalValue);
+
+            setTimeout(() => {
+                scannerWrapper.classList.remove('scan-flash');
+            }, 500);
+
+            // Optional: Auto-stop after successful scan for better mobile UX
+            stopScanner();
+        }
+
+        async function startScanner() {
+            try {
+                isScanning = true;
+                scannerWrapper.classList.remove('hidden');
+                btnText.innerText = "Stop Scanner";
+                scanBtn.classList.replace('bg-blue-600', 'bg-slate-800');
+                updateStatus('Searching for QR/Barcode...');
+
+                html5QrCode = new Html5Qrcode("reader");
+                const config = { fps: 15, qrbox: { width: 250, height: 250 } };
+
+                // Use back camera (environment)
+                await html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    config, 
+                    handleScanSuccess
+                );
+            } catch (err) {
+                console.error(err);
+                updateStatus('Camera error: ' + err, 'error');
+                stopScanner();
+            }
+        }
+
+        async function stopScanner() {
+            isScanning = false;
+            btnText.innerText = "Open Scanner";
+            scanBtn.classList.replace('bg-slate-800', 'bg-blue-600');
+            scannerWrapper.classList.add('hidden');
+            if (html5QrCode) {
+                await html5QrCode.stop();
+                html5QrCode.clear();
+            }
+            updateStatus('Scanner stopped');
+        }
+
+        scanBtn.addEventListener('click', () => {
+            if (isScanning) stopScanner();
+            else startScanner();
+        });
+
+        clearBtn.addEventListener('click', () => {
+            inputField.value = '';
+            clearBtn.classList.add('hidden');
+            updateStatus('Cleared');
+        });
+
+        inputField.addEventListener('input', () => {
+            if (inputField.value) clearBtn.classList.remove('hidden');
+            else clearBtn.classList.add('hidden');
+        });
+
+        clearHistoryBtn.addEventListener('click', () => {
+            historyList.innerHTML = '<p class="text-xs text-slate-300 italic text-center py-2">No scans yet</p>';
+        });
+
+        // Initialize Audio on first user interaction to bypass browser policies
+        document.body.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }, { once: true });
+
+    </script>
+</body>
+</html>
